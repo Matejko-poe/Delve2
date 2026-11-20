@@ -610,11 +610,11 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		MineMapArea.Inflate(0f - num2, 0f - num3);
 		foreach (DelveBigCell item in MineMap.GridElement.Cells.Where((DelveBigCell cell) => ((Element)cell).GetClientRect().Intersects(MineMapArea)))
 		{
-			foreach (DelveCell item2 in item.Cells.Where((DelveCell x) => x.Type != ""))
+			foreach (DelveCell item2 in item.Cells.Where((DelveCell x) => x.Feature != null))
 			{
 				RectangleF clientRect = ((Element)item2).GetClientRect();
 				SharpDX.Vector2 center = clientRect.Center;
-				if ((!item2.PathIsHidden() && item2.IsCellVisible() && base.Settings.OnlyShowHiddenPaths.Value) || !MineMapArea.Intersects(clientRect))
+				if ((!item2.IsBehindWall && item2.GameDraws && base.Settings.OnlyShowHiddenPaths.Value) || !MineMapArea.Intersects(clientRect))
 				{
 					continue;
 				}
@@ -624,7 +624,7 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 				Color color2;
 				if (base.Settings.ColoredPaths.Value)
 				{
-					string text = item2.BiomeName();
+					string text = item2.Biome?.Id;
 					if (1 == 0)
 					{
 					}
@@ -689,9 +689,9 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 						num4++;
 					}
 				}
-				if (!item2.IsCellVisible() && item2.HasEncounter() && MineMapArea.Contains(center))
+				if (!item2.GameDraws && item2.Feature != null && MineMapArea.Contains(center))
 				{
-					AtlasTexture byFeatureId = iconStore.GetByFeatureId(item2.Type);
+					AtlasTexture byFeatureId = iconStore.GetByFeatureId(item2.Feature?.Id);
 					if (byFeatureId != null)
 					{
 						RectangleF rectangleF = clientRect;
