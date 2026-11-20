@@ -4,16 +4,6 @@ An ExileCore plugin for Path of Exile that enhances Delve exploration by showing
 
 ---
 
-## Quick Install (PowerShell)
-
-```powershell
-irm https://raw.githubusercontent.com/Matejko-poe/Delve2/main/install.ps1 | iex
-```
-
-The script will ask for your ExileCore `Plugins/` folder path, then download and install everything automatically.
-
----
-
 ## Features
 
 ### Minimap Icons
@@ -40,7 +30,7 @@ Fossils are sorted into three tiers based on value:
 
 ---
 
-## Manual Install
+## Install
 
 1. Download the latest release zip from [Releases](https://github.com/Matejko-poe/Delve2/releases/latest)
 2. Extract the `Delve/` folder into your ExileCore `Plugins/` directory
