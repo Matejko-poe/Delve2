@@ -274,7 +274,7 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		Input.RegisterKey(base.Settings.DebugHotkey.Value);
 		buildDate = new DateTime(2026, 11, 21);
 		base.Name = "Delve";
-		PluginVersion = "2.0.1";
+		PluginVersion = "2.0.2";
 		DelveEntities = new List<DelveEntity>();
 		try
 		{
