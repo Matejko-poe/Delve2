@@ -74,7 +74,6 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 
 	private RectangleF DrawRect;
 
-	public float CurrentDelveMapZoom = 0.635625f;
 
 	private List<DelveEntity> DelveEntities;
 
@@ -90,9 +89,9 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 
 	private bool IsAzuriteMine;
 
+
 	public FossilTiers FossilList = new FossilTiers();
 
-	private IconStore iconStore;
 
 	private float updateCooldown = 250f;
 
@@ -146,6 +145,18 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 
 	private AtlasTexture _iconCurrency;
 
+	private AtlasTexture _iconDivine;
+
+	private AtlasTexture _iconExalted;
+
+
+
+	private readonly HashSet<uint> _alerted = new HashSet<uint>();
+
+	private DateTime _alertUntil = DateTime.MinValue;
+
+	private string _alertText = "";
+
 	private AtlasTexture _iconDelveChest;
 
 	private AtlasTexture _iconDivinationCard;
@@ -160,11 +171,9 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 
 	private AtlasTexture _iconFragment;
 
-	private AtlasTexture _iconGate;
 
 	private AtlasTexture _iconHarbingerChest;
 
-	private AtlasTexture _iconHiddenDoor;
 
 	private AtlasTexture _iconHighLevelGem;
 
@@ -263,10 +272,9 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		}
 		AtlasTextureInit();
 		Input.RegisterKey(base.Settings.DebugHotkey.Value);
-		iconStore = new IconStore(base.CreateAtlas(Path.Join(SourceDir, "Textures", "chart", "icons.json"), Path.Join(SourceDir, "Textures", "chart", "icons.png")), Path.Join(SourceDir, "chart_icons.json"));
-		buildDate = new DateTime(2000, 1, 1).AddDays(version.Build).AddSeconds(version.Revision * 2);
+		buildDate = new DateTime(2026, 11, 21);
 		base.Name = "Delve";
-		PluginVersion = $"{version}";
+		PluginVersion = "2.0.1";
 		DelveEntities = new List<DelveEntity>();
 		try
 		{
@@ -276,6 +284,7 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		{
 		}
 		base.GameController.Area.OnAreaChange += ((BaseSettingsPlugin<DelveSettings>)this).AreaChange;
+		try { IsAzuriteMine = base.GameController.Area.CurrentArea.Name.Contains("Azurite Mine"); } catch { }
 		if (File.Exists(SourceDir + "\\Fossil_Tiers.json"))
 		{
 			string text = File.ReadAllText(SourceDir + "\\Fossil_Tiers.json");
@@ -292,7 +301,68 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 	{
 		base.AreaChange(area);
 		DelveEntities = new List<DelveEntity>();
+		_alerted.Clear();
+		_alertUntil = DateTime.MinValue;
 		IsAzuriteMine = base.GameController.Area.CurrentArea.Name.Contains("Azurite Mine");
+	}
+
+	private static bool IsResonatorEventPath(string path)
+	{
+		return path.StartsWith("Metadata/Chests/DelveChests/Resonator") && path.EndsWith("Encounter");
+	}
+
+	private static bool IsOpulentPath(string path)
+	{
+		return path.StartsWith("Metadata/Chests/DelveChests/") && !path.EndsWith("Encounter") && path.Contains("Currency3");
+	}
+
+	private static bool IsExaltedPath(string path)
+	{
+		return path.StartsWith("Metadata/Chests/DelveChests/") && !path.EndsWith("Encounter") && path.Contains("Currency2");
+	}
+
+	private void CheckOpulentAlerts()
+	{
+		if (!base.Settings.OpulentAlert.Value)
+		{
+			return;
+		}
+		foreach (DelveEntity e in DelveEntities)
+		{
+			if (e == null || e.IsOpened || !IsOpulentPath(e.Path) || !_alerted.Add(e.Id))
+			{
+				continue;
+			}
+			_alertText = "OPULENT CHEST (Divine) detected!";
+			_alertUntil = DateTime.UtcNow.AddSeconds(base.Settings.OpulentAlertSeconds.Value);
+			if (base.Settings.OpulentAlertSound.Value)
+			{
+				try
+				{
+					string wav = Path.Combine(SourceDir, "opulent.wav");
+					if (File.Exists(wav))
+					{
+						new System.Media.SoundPlayer(wav).Play();
+					}
+					else
+					{
+						System.Media.SystemSounds.Exclamation.Play();
+					}
+				}
+				catch
+				{
+				}
+			}
+		}
+	}
+
+	private void DrawHud()
+	{
+		SharpDX.Vector2 screen = new SharpDX.Vector2(base.GameController.Game.IngameState.Camera.Width, base.GameController.Game.IngameState.Camera.Height);
+		if (DateTime.UtcNow < _alertUntil)
+		{
+			base.Graphics.DrawTextWithBackground(_alertText, new System.Numerics.Vector2(screen.X / 2f, screen.Y * 0.18f), Color.Gold, FontAlign.Center, Color.Black);
+		}
 	}
 
 	private void DrawData(string icon, string data)
@@ -328,23 +398,18 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		SubMap val = ((RemoteMemoryObject)map.LargeMap).AsObject<SubMap>();
 		MapIcon._mapScale = (float)base.GameController.IngameState.Camera.Height / 677f * val.Zoom;
 		SubterraneanChart delveWindow = base.GameController.Game.IngameState.IngameUi.DelveWindow;
-		if (base.Settings.DelveMineMapConnections.Value)
-		{
-			DrawMineMapConnections(delveWindow);
-		}
-		if (base.Settings.DelveGridMap.Value)
-		{
-			DelveMapNodes(delveWindow);
-		}
 		if (!((Element)delveWindow).IsVisible)
 		{
 			RenderMapImages();
 		}
 		try
 		{
-			CurrentDelveMapZoom = ((Element)delveWindow).Children[0].Children[0].Children[2].Scale;
+			CheckOpulentAlerts();
+			DrawHud();
 		}
-		catch { }
+		catch
+		{
+		}
 		if (base.Settings.DebugHotkey.PressedOnce())
 		{
 			base.Settings.DebugMode.Value = !base.Settings.DebugMode.Value;
@@ -355,7 +420,7 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		}
 		foreach (DelveEntity delveEntity in DelveEntities)
 		{
-			if (!delveEntity.Path.StartsWith("Metadata/Terrain/Leagues/Delve/Objects/DelveWall") && !delveEntity.Path.StartsWith("Metadata/Terrain/Leagues/Delve/Objects/DelveLight"))
+			if (!delveEntity.Path.StartsWith("Metadata/Terrain/Leagues/Delve/Objects/DelveLight"))
 			{
 				bool? flag = delveEntity?.IsOpened;
 				if (!base.Settings.ShouldHideOnOpen.Value || flag != true)
@@ -367,42 +432,6 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 					base.Graphics.DrawText(text, vector2, Color.Black, 20, (FontAlign)1);
 				}
 			}
-		}
-	}
-
-	private void DelveMapNodes(SubterraneanChart mineMap)
-	{
-		if (!base.Settings.DelveGridMap.Value || !((Element)mineMap).IsVisible)
-		{
-			return;
-		}
-		try
-		{
-			List<Element> list = ((Element)mineMap).Children[0].Children[0].Children[2].Children.ToList();
-			if (Math.Abs((CurrentDelveMapZoom = ((Element)mineMap).Children[0].Children[0].Children[2].Scale) - base.Settings.DelveGridMapScale) > 0.005f)
-			{
-				return;
-			}
-			for (int i = 0; i < list.Count; i++)
-			{
-				Element val = list[i];
-				if (!val.GetClientRect().Intersects(((Element)mineMap).GetClientRect()))
-				{
-					continue;
-				}
-				List<Element> list2 = val.Children.ToList();
-				for (int j = 0; j < list2.Count - 1; j++)
-				{
-					Element val2 = list2[j];
-					if (val2.GetClientRect().Intersects(((Element)mineMap).GetClientRect()))
-					{
-						base.Graphics.DrawFrame(val2.GetClientRect(), Color.DarkGray, 1);
-					}
-				}
-			}
-		}
-		catch
-		{
 		}
 	}
 
@@ -422,7 +451,9 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		{
 			SharpDX.Vector2 vector = LargeMapInformation.ScreenCenter + MapIcon.TranslateGridDeltaToMapDelta(entity.GridPos - LargeMapInformation.PlayerPos, rendererPosZ - LargeMapInformation.PlayerPosZ);
 			float num = mapIcon.Size * 2f;
-			base.Graphics.DrawImage(mapIcon.Texture, new RectangleF(vector.X - num / 2f, vector.Y - num / 2f, num, num), mapIcon.Color);
+			RectangleF iconRect = new RectangleF(vector.X - num / 2f, vector.Y - num / 2f, num, num);
+			base.Graphics.DrawImage(mapIcon.Texture, iconRect, mapIcon.Color);
+			DrawOpulentPulse(entity, iconRect);
 		}
 		catch (NullReferenceException)
 		{
@@ -456,6 +487,7 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 			if (result)
 			{
 				base.Graphics.DrawImage(mapIcon.Texture, value, mapIcon.Color);
+				DrawOpulentPulse(entity, value);
 			}
 		}
 		catch (NullReferenceException)
@@ -463,8 +495,24 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		}
 	}
 
-	private static bool IsRadarLineTarget(DelveEntity entity)
+	private void DrawOpulentPulse(DelveEntity entity, RectangleF iconRect)
 	{
+		if (!base.Settings.OpulentPulse.Value || !IsOpulentPath(entity.Path))
+		{
+			return;
+		}
+		float k = (float)(0.5 + 0.5 * Math.Sin(DateTime.UtcNow.TimeOfDay.TotalSeconds * 6.0));
+		RectangleF r = iconRect;
+		r.Inflate(2f + 4f * k, 2f + 4f * k);
+		base.Graphics.DrawFrame(r, new Color(255, 215, 0, (int)(110 + 145 * k)), 2);
+	}
+
+	private bool IsRadarLineTarget(DelveEntity entity)
+	{
+		if (base.Settings.RadarOnlyHighValue.Value && !IsOpulentPath(entity.Path) && !IsExaltedPath(entity.Path))
+		{
+			return false;
+		}
 		// Exclude terrain objects (walls, lights/path waypoints) - only chests are clickable targets
 		return entity.Path.StartsWith("Metadata/Chests/DelveChests/");
 	}
@@ -532,7 +580,7 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		ICollection<Entity> entities = base.GameController.Entities;
 		foreach (Entity entity in entities)
 		{
-			if (entity != null && (entity.Path.StartsWith("Metadata/Chests/DelveChests/") || entity.Path.StartsWith("Metadata/Terrain/Leagues/Delve/Objects/DelveWall") || entity.Path.StartsWith("Metadata/Terrain/Leagues/Delve/Objects/DelveLight")))
+			if (entity != null && (entity.Path.StartsWith("Metadata/Chests/DelveChests/") || entity.Path.StartsWith("Metadata/Terrain/Leagues/Delve/Objects/DelveLight")))
 			{
 				DelveEntity delveEntity = DelveEntities.FirstOrDefault((DelveEntity x) => x != null && x.Id == entity.Id);
 				if (delveEntity != null)
@@ -540,13 +588,18 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 					delveEntity.IsAlive = entity.IsAlive;
 					delveEntity.IsOpened = entity.IsOpened;
 				}
+				else
+				{
+					// entities that were already in the zone when the plugin was (re)loaded never reach EntityAdded
+					EntityAdded(entity);
+				}
 			}
 		}
 	}
 
 	public override void EntityAdded(Entity entity)
 	{
-		if (IsAzuriteMine && entity != null && !DelveEntities.Exists((DelveEntity x) => x.Id == entity.Id) && (entity.Path.StartsWith("Metadata/Chests/DelveChests/") || entity.Path.StartsWith("Metadata/Terrain/Leagues/Delve/Objects/DelveWall") || entity.Path.StartsWith("Metadata/Terrain/Leagues/Delve/Objects/DelveLight")))
+		if (IsAzuriteMine && entity != null && !DelveEntities.Exists((DelveEntity x) => x.Id == entity.Id) && (entity.Path.StartsWith("Metadata/Chests/DelveChests/") || entity.Path.StartsWith("Metadata/Terrain/Leagues/Delve/Objects/DelveLight")))
 		{
 			bool isOpened = entity.IsOpened;
 			Render component = entity.GetComponent<Render>();
@@ -596,116 +649,10 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		DrawRadarLinesToSmallMiniMap();
 	}
 
-	private void DrawMineMapConnections(SubterraneanChart MineMap)
-	{
-		if (!((Element)MineMap).IsVisible || !base.Settings.DrawPaths.Value)
-		{
-			return;
-		}
-		int num = 0;
-		RectangleF empty = RectangleF.Empty;
-		RectangleF MineMapArea = ((Element)MineMap).GetClientRect();
-		float num2 = (float)(100 - base.Settings.ShowRadiusPercentage.Value) * MineMapArea.Width / 200f;
-		float num3 = (float)(100 - base.Settings.ShowRadiusPercentage.Value) * MineMapArea.Height / 200f;
-		MineMapArea.Inflate(0f - num2, 0f - num3);
-		foreach (DelveBigCell item in MineMap.GridElement.Cells.Where((DelveBigCell cell) => ((Element)cell).GetClientRect().Intersects(MineMapArea)))
-		{
-			foreach (DelveCell item2 in item.Cells.Where((DelveCell x) => x.Feature != null))
-			{
-				RectangleF clientRect = ((Element)item2).GetClientRect();
-				SharpDX.Vector2 center = clientRect.Center;
-				if ((!item2.IsBehindWall && item2.GameDraws && base.Settings.OnlyShowHiddenPaths.Value) || !MineMapArea.Intersects(clientRect))
-				{
-					continue;
-				}
-				Element[] array = ((Element)item2).Children.Where((Element x) => x != null && !x.IsVisible && ((int)x.Width == 10 || (int)x.Width == 4)).ToArray();
-				int num4 = 0;
-				int num5 = array.Count();
-				Color color2;
-				if (base.Settings.ColoredPaths.Value)
-				{
-					string text = item2.Biome?.Id;
-					if (1 == 0)
-					{
-					}
-					Color color = text switch
-					{
-						"AbyssalDepths" => Color.DarkGreen, 
-						"AbyssalCity" => Color.DarkGreen, 
-						"PetrifiedForest" => Color.SandyBrown, 
-						"MagmaFissure" => Color.DarkRed, 
-						"FungalCaverns" => Color.DarkViolet, 
-						"FrozenHollow" => Color.DarkBlue, 
-						"PrimevalRuins" => Color.Blue, 
-						"VaalOutpost" => Color.Orange, 
-						"SulphurVents" => Color.Brown, 
-						_ => Color.Yellow, 
-					};
-					if (1 == 0)
-					{
-					}
-					color2 = color;
-				}
-				else
-				{
-					color2 = Color.Yellow;
-				}
-				Color color3 = color2;
-				if (base.Settings.DrawStraightPaths.Value)
-				{
-					List<SharpDX.Vector2> list = new List<SharpDX.Vector2>();
-					if (((Element)item2).Children.Any((Element x) => x.Width == 10f && x.Y != 0f))
-					{
-						list.Add(clientRect.BottomMiddle());
-					}
-					if (((Element)item2).Children.Any((Element x) => x.Width == 10f && x.Y == 0f))
-					{
-						list.Add(clientRect.TopMiddle());
-					}
-					if (((Element)item2).Children.Any((Element x) => x.Width == 4f && x.X == 0f))
-					{
-						list.Add(clientRect.LeftMiddle());
-					}
-					if (((Element)item2).Children.Any((Element x) => x.Width == 4f && x.X != 0f))
-					{
-						list.Add(clientRect.RightMiddle());
-					}
-					foreach (SharpDX.Vector2 item3 in list)
-					{
-						base.Graphics.DrawLine(center, item3, 4f, color3);
-					}
-				}
-				else
-				{
-					Element[] array2 = array;
-					foreach (Element val in array2)
-					{
-						int num7 = 15;
-						SharpDX.Vector2 center2 = val.GetClientRect().Center;
-						if (num4 < num5)
-						{
-							base.Graphics.DrawLine(center2, center, 4f, color3);
-						}
-						num4++;
-					}
-				}
-				if (!item2.GameDraws && item2.Feature != null && MineMapArea.Contains(center))
-				{
-					AtlasTexture byFeatureId = iconStore.GetByFeatureId(item2.Feature?.Id);
-					if (byFeatureId != null)
-					{
-						RectangleF rectangleF = clientRect;
-						rectangleF.Inflate((0f - rectangleF.Width) / 7f, (0f - rectangleF.Height) / 7f);
-						base.Graphics.DrawImage(byFeatureId, rectangleF);
-					}
-				}
-			}
-		}
-	}
-
 	public void DelveMenu(int idIn, out int idPop)
 	{
 		idPop = idIn;
+		DelveMenuExtras();
 		if (ImGui.TreeNode("Delve Path's"))
 		{
 			ImGui.PushID(idPop);
@@ -720,14 +667,6 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 			ImGui.PushID(idPop);
 			base.Settings.DelvePathWaysNodeColor = ImGuiExtension.ColorPicker("Color", base.Settings.DelvePathWaysNodeColor);
 			ImGui.PopID();
-			idPop++;
-			ImGui.Spacing();
-			ImGui.Spacing();
-			base.Settings.DelveWall.Value = ImGuiExtension.Checkbox($"Breakable Wall##{idPop}", base.Settings.DelveWall.Value);
-			idPop++;
-			base.Settings.DelveWallSize.Value = ImGuiExtension.IntSlider($"Size##{idPop}", base.Settings.DelveWallSize);
-			idPop++;
-			base.Settings.DelveWallColor.Value = ImGuiExtension.ColorPicker($"Color##{idPop}", base.Settings.DelveWallColor.Value);
 			idPop++;
 			ImGui.TreePop();
 		}
@@ -797,41 +736,11 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 			ImGui.Spacing();
 			ImGui.TreePop();
 		}
-		if (ImGui.TreeNode("Delve Mine Map Stuff"))
+		if (ImGui.TreeNode("Minimap radar lines"))
 		{
-			ImGui.PushID(idPop);
-			base.Settings.DelveMineMapConnections.Value = ImGuiExtension.Checkbox($"Show Connections###{idPop}", base.Settings.DelveMineMapConnections.Value);
-			ImGui.PopID();
-			idPop++;
-			base.Settings.ShowRadiusPercentage.Value = ImGuiExtension.IntSlider($"Radius (%)##{idPop}", base.Settings.ShowRadiusPercentage);
-			idPop++;
-			base.Settings.DrawPaths.Value = ImGuiExtension.Checkbox($"Draw Path's###{idPop}", base.Settings.DrawPaths.Value);
-			idPop++;
-			base.Settings.OnlyShowHiddenPaths.Value = ImGuiExtension.Checkbox($"Draw only Hidden Path's###{idPop}", base.Settings.OnlyShowHiddenPaths.Value);
-			idPop++;
-			base.Settings.ColoredPaths.Value = ImGuiExtension.Checkbox($"Draw Path's with Biom Color###{idPop}", base.Settings.ColoredPaths.Value);
-			idPop++;
-			base.Settings.DrawStraightPaths.Value = ImGuiExtension.Checkbox($"Draw Straight Path's###{idPop}", base.Settings.DrawStraightPaths.Value);
-			idPop++;
-			ImGui.Spacing();
 			base.Settings.MinimapRadarLines.Value = ImGuiExtension.Checkbox($"Draw Minimap Radar Lines to Chests##{idPop}", base.Settings.MinimapRadarLines.Value);
 			idPop++;
 			base.Settings.MinimapRadarLineWidth.Value = ImGuiExtension.IntSlider($"  Minimap Radar Line Width##{idPop}", base.Settings.MinimapRadarLineWidth);
-			idPop++;
-			ImGui.TreePop();
-		}
-	if (ImGui.TreeNode("Delve Map Grid"))
-		{
-			ImGui.PushID(idPop);
-			base.Settings.DelveGridMap.Value = ImGuiExtension.Checkbox(base.Settings.DelveGridMap.Value ? "Show" : "Hidden", base.Settings.DelveGridMap.Value);
-			ImGui.PopID();
-			idPop++;
-			ImGui.PushID(idPop);
-			if (ImGui.Button("Set current Delve Zoom as the zoom you want to show grid"))
-			{
-				base.Settings.DelveGridMapScale = CurrentDelveMapZoom;
-			}
-			ImGui.PopID();
 			idPop++;
 			ImGui.TreePop();
 		}
@@ -845,6 +754,39 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 			idPop++;
 			base.Settings.ShouldHideOnOpen.Value = ImGuiExtension.Checkbox($"Hide Chest Name When Opened##{idPop}", base.Settings.ShouldHideOnOpen.Value);
 			idPop++;
+			ImGui.TreePop();
+		}
+	}
+
+	private void DelveMenuExtras()
+	{
+		var st = base.Settings;
+		if (ImGui.TreeNode("Currency chests by tier"))
+		{
+			st.CurrencyShowTier1.Value = ImGuiExtension.Checkbox("Show Chaos tier##cur1", st.CurrencyShowTier1.Value);
+			st.CurrencyTier1Size.Value = ImGuiExtension.IntSlider("Chaos size##cur1s", st.CurrencyTier1Size);
+			st.CurrencyShowTier2.Value = ImGuiExtension.Checkbox("Show Exalted tier##cur2", st.CurrencyShowTier2.Value);
+			st.CurrencyTier2Size.Value = ImGuiExtension.IntSlider("Exalted size##cur2s", st.CurrencyTier2Size);
+			st.CurrencyShowTier3.Value = ImGuiExtension.Checkbox("Show Divine tier (Hidden Opulence)##cur3", st.CurrencyShowTier3.Value);
+			st.CurrencyTier3Size.Value = ImGuiExtension.IntSlider("Divine size##cur3s", st.CurrencyTier3Size);
+			st.RadarOnlyHighValue.Value = ImGuiExtension.Checkbox("Radar lines only to Divine/Exalted chests##radhv", st.RadarOnlyHighValue.Value);
+			ImGui.TreePop();
+		}
+		if (ImGui.TreeNode("Resonator / Azurite filters"))
+		{
+			st.ResonatorShowTier1.Value = ImGuiExtension.Checkbox("Resonator chest, lowest tier (Resonator1, ~2c per open)##res1", st.ResonatorShowTier1.Value);
+			st.ResonatorShowTier2.Value = ImGuiExtension.Checkbox("Resonator chest, middle tier (Resonator2, ~5c per open)##res2", st.ResonatorShowTier2.Value);
+			st.ResonatorShowTier3.Value = ImGuiExtension.Checkbox("Resonator chest, highest tier (Resonator3-5, Prime Chaotic Resonator)##res3", st.ResonatorShowTier3.Value);
+			st.ResonatorShowEvent.Value = ImGuiExtension.Checkbox("Event resonator chests (Resonator Trove / Stash)##resev", st.ResonatorShowEvent.Value);
+			st.AzuriteShowLowTier.Value = ImGuiExtension.Checkbox("Azurite: show the two smallest veins##azlow", st.AzuriteShowLowTier.Value);
+			ImGui.TreePop();
+		}
+		if (ImGui.TreeNode("Opulent chest alert"))
+		{
+			st.OpulentAlert.Value = ImGuiExtension.Checkbox("Alert when an Opulent (Divine) chest appears##opal", st.OpulentAlert.Value);
+			st.OpulentAlertSound.Value = ImGuiExtension.Checkbox("Play sound (opulent.wav in plugin folder, else system sound)##opsnd", st.OpulentAlertSound.Value);
+			st.OpulentAlertSeconds.Value = ImGuiExtension.IntSlider("Alert duration (s)##opsec", st.OpulentAlertSeconds);
+			st.OpulentPulse.Value = ImGuiExtension.Checkbox("Pulsing frame on the minimap##oppulse", st.OpulentPulse.Value);
 			ImGui.TreePop();
 		}
 	}
@@ -888,6 +830,8 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		_iconBreachChest = GetDelveAtlasTexture("BreachChest");
 		_iconCorrupted = GetDelveAtlasTexture("Corrupted");
 		_iconCurrency = GetDelveAtlasTexture("Currency");
+		_iconDivine = GetDelveAtlasTexture("DivineOrb");
+		_iconExalted = GetDelveAtlasTexture("ExaltedOrb");
 		_iconDelveChest = GetDelveAtlasTexture("DelveChest");
 		_iconDivinationCard = GetDelveAtlasTexture("DivinationCard");
 		_iconDominationChest = GetDelveAtlasTexture("DominationChest");
@@ -895,9 +839,7 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		_iconEssence = GetDelveAtlasTexture("Essence");
 		_iconFlare = GetDelveAtlasTexture("Flare");
 		_iconFragment = GetDelveAtlasTexture("Fragment");
-		_iconGate = GetDelveAtlasTexture("Gate");
 		_iconHarbingerChest = GetDelveAtlasTexture("HarbingerChest");
-		_iconHiddenDoor = GetDelveAtlasTexture("HiddenDoor");
 		_iconHighLevelGem = GetDelveAtlasTexture("HighLevelGem");
 		_iconIncursionChest = GetDelveAtlasTexture("IncursionChest");
 		_iconMap = GetDelveAtlasTexture("Map");
@@ -940,6 +882,11 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 		}
 		if (base.Settings.DelveChests.Value && !e.IsOpened)
 		{
+			if (IsResonatorEventPath(e.Path))
+			{
+				if (!base.Settings.DelveResonatorChest.Value || !base.Settings.ResonatorShowEvent.Value) return null;
+				return new MapIcon(_iconResonatorT1, base.Settings.DelveResonatorChestColor.Value, (float)base.Settings.DelveResonatorChestSize.Value * 1.0f);
+			}
 			if (e.Path.EndsWith("Encounter"))
 			{
 				return null;
@@ -973,15 +920,18 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 				string text = e.Path.Replace("Metadata/Chests/DelveChests/", "");
 				if (text.Contains("Currency1") || text == "DynamiteCurrency" || text.Contains("DelveChestCurrencyHighShards"))
 				{
-					return new MapIcon(_iconCurrency, base.Settings.DelveCurrencyChestColor.Value, base.Settings.DelveCurrencyChestSize.Value);
+					if (!base.Settings.CurrencyShowTier1.Value) return null;
+					return new MapIcon(_iconCurrency, base.Settings.DelveCurrencyChestColor.Value, base.Settings.CurrencyTier1Size.Value);
 				}
 				if (text.Contains("Currency2"))
 				{
-					return new MapIcon(_iconCurrency, base.Settings.DelveCurrencyChestColor.Value, base.Settings.DelveCurrencyChestSize.Value * 2);
+					if (!base.Settings.CurrencyShowTier2.Value) return null;
+					return new MapIcon(_iconExalted ?? _iconCurrency, Color.White, base.Settings.CurrencyTier2Size.Value);
 				}
 				if (text.Contains("Currency3"))
 				{
-					return new MapIcon(_iconCurrency, base.Settings.DelveCurrencyChestColor.Value, base.Settings.DelveCurrencyChestSize.Value * 3);
+					if (!base.Settings.CurrencyShowTier3.Value) return null;
+					return new MapIcon(_iconDivine ?? _iconCurrency, Color.White, base.Settings.CurrencyTier3Size.Value);
 				}
 				if (text.Contains("DelveChestCurrencySilverCoins"))
 				{
@@ -1035,10 +985,12 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 				AtlasTexture texture = _iconAzurite;
 				if (e.Path.EndsWith("1_1"))
 				{
+					if (!base.Settings.AzuriteShowLowTier.Value) return null;
 					texture = _iconAzuriteT3;
 				}
 				else if (e.Path.EndsWith("1_2"))
 				{
+					if (!base.Settings.AzuriteShowLowTier.Value) return null;
 					texture = _iconAzuriteT3;
 				}
 				else if (e.Path.EndsWith("1_3"))
@@ -1055,17 +1007,17 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 			}
 			if (e.Path.StartsWith("Metadata/Chests/DelveChests/Resonator3") || e.Path.StartsWith("Metadata/Chests/DelveChests/Resonator4") || e.Path.StartsWith("Metadata/Chests/DelveChests/Resonator5"))
 			{
-				if (!base.Settings.DelveResonatorChest.Value) return null;
+				if (!base.Settings.DelveResonatorChest.Value || !base.Settings.ResonatorShowTier3.Value) return null;
 				return new MapIcon(_iconResonatorT1, base.Settings.DelveResonatorChestColor.Value, (float)base.Settings.DelveResonatorChestSize.Value * 0.7f);
 			}
 			if (e.Path.StartsWith("Metadata/Chests/DelveChests/Resonator2"))
 			{
-				if (!base.Settings.DelveResonatorChest.Value) return null;
+				if (!base.Settings.DelveResonatorChest.Value || !base.Settings.ResonatorShowTier2.Value) return null;
 				return new MapIcon(_iconResonatorT2, base.Settings.DelveResonatorChestColor.Value, (float)base.Settings.DelveResonatorChestSize.Value * 0.7f);
 			}
 			if (e.Path.StartsWith("Metadata/Chests/DelveChests/Resonator1"))
 			{
-				if (!base.Settings.DelveResonatorChest.Value) return null;
+				if (!base.Settings.DelveResonatorChest.Value || !base.Settings.ResonatorShowTier1.Value) return null;
 				return new MapIcon(_iconResonatorT3, base.Settings.DelveResonatorChestColor.Value, (float)base.Settings.DelveResonatorChestSize.Value * 0.7f);
 			}
 			if (e.Path.StartsWith("Metadata/Chests/DelveChests/DelveChestArmourMovementSpeed"))
@@ -1121,14 +1073,6 @@ public class DelveCore : BaseSettingsPlugin<DelveSettings>
 			if (e.Path.StartsWith("Metadata/Chests/DelveChests/DelveChestArmourCorrupted") || e.Path.StartsWith("Metadata/Chests/DelveChests/DelveChestWeaponCorrupted") || e.Path.StartsWith("Metadata/Chests/DelveChests/DelveChestTrinketsCorrupted") || e.Path.StartsWith("Metadata/Chests/DelveChests/DelveChestCityVaalDoubleCorrupted"))
 			{
 				return new MapIcon(_iconCorrupted, base.Settings.DelveCurrencyChestColor.Value, base.Settings.DelveCurrencyChestSize.Value);
-			}
-			if (e.Path.StartsWith("Metadata/Terrain/Leagues/Delve/Objects/DelveWall"))
-			{
-				if (!e.IsAlive)
-				{
-					return new MapIcon(_iconHiddenDoor, base.Settings.DelveWallColor.Value, base.Settings.DelveWallSize.Value);
-				}
-				return new MapIcon(_iconGate, base.Settings.DelveWallColor.Value, base.Settings.DelveWallSize.Value);
 			}
 			if (e.Path.StartsWith("Metadata/Chests/DelveChests/PathGeneric") || e.Path.StartsWith("Metadata/Chests/DelveChests/OffPathGeneric"))
 			{

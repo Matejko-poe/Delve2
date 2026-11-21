@@ -15,12 +15,6 @@ public class DelveSettings : ISettings
 
 	public ToggleNode DelveChests = new ToggleNode(true);
 
-	public ToggleNode DelveWall { get; set; } = new ToggleNode(true);
-
-	public RangeNode<int> DelveWallSize { get; set; } = new RangeNode<int>(18, 1, 200);
-
-	public ColorNode DelveWallColor { get; set; } = (Color)(new ColorBGRA(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue));
-
 	public ToggleNode DelveMiningSuppliesDynamiteChest { get; set; } = new ToggleNode(true);
 
 	public RangeNode<int> DelveMiningSuppliesDynamiteChestSize { get; set; } = new RangeNode<int>(15, 1, 200);
@@ -63,29 +57,40 @@ public class DelveSettings : ISettings
 
 	public ColorNode DelvePathwayChestColor { get; set; } = (Color)(new ColorBGRA(0, 131, 0, byte.MaxValue));
 
-	public ToggleNode DelveMineMapConnections { get; set; } = new ToggleNode(true);
-
-	public RangeNode<int> ShowRadiusPercentage { get; set; } = new RangeNode<int>(80, 0, 100);
-
 	public ToggleNode DebugMode { get; set; } = new ToggleNode(false);
 
 	public ToggleNode ShouldHideOnOpen { get; set; } = new ToggleNode(false);
 
-	public ToggleNode DrawPaths { get; set; } = new ToggleNode(true);
-
-	public ToggleNode ColoredPaths { get; set; } = new ToggleNode(true);
-
-	public ToggleNode OnlyShowHiddenPaths { get; set; } = new ToggleNode(false);
-
-	public ToggleNode DrawStraightPaths { get; set; } = new ToggleNode(true);
-
 	public HotkeyNode DebugHotkey { get; set; } = new HotkeyNode(Keys.Menu);
 
-	public ToggleNode DelveGridMap { get; set; } = new ToggleNode(true);
-
-	public float DelveGridMapScale { get; set; } = 0.635625f;
-
 	public ToggleNode Enable { get; set; } = new ToggleNode(false);
+
+	// Currency chests by tier: chaos (1) / exalted (2) / divine = "Hidden Opulence" (3)
+	public ToggleNode CurrencyShowTier1 { get; set; } = new ToggleNode(true);
+	public ToggleNode CurrencyShowTier2 { get; set; } = new ToggleNode(true);
+	public ToggleNode CurrencyShowTier3 { get; set; } = new ToggleNode(true);
+	public RangeNode<int> CurrencyTier1Size { get; set; } = new RangeNode<int>(9, 1, 200);
+	public RangeNode<int> CurrencyTier2Size { get; set; } = new RangeNode<int>(12, 1, 200);
+	public RangeNode<int> CurrencyTier3Size { get; set; } = new RangeNode<int>(16, 1, 200);
+
+	// Resonator chests by chest tier (path Resonator1 = lowest .. Resonator3+ = highest)
+	public ToggleNode ResonatorShowTier1 { get; set; } = new ToggleNode(true);
+	public ToggleNode ResonatorShowTier2 { get; set; } = new ToggleNode(true);
+	public ToggleNode ResonatorShowTier3 { get; set; } = new ToggleNode(true);
+	// Event chests: Resonator Trove (Resonator3Encounter), Resonator Stash (Resonator1Encounter)
+	public ToggleNode ResonatorShowEvent { get; set; } = new ToggleNode(true);
+
+	// Azurite: hide the two smallest veins
+	public ToggleNode AzuriteShowLowTier { get; set; } = new ToggleNode(true);
+
+	// Opulent chest (top currency chest) alert
+	public ToggleNode OpulentAlert { get; set; } = new ToggleNode(true);
+	public ToggleNode OpulentAlertSound { get; set; } = new ToggleNode(true);
+	public RangeNode<int> OpulentAlertSeconds { get; set; } = new RangeNode<int>(8, 2, 30);
+	public ToggleNode OpulentPulse { get; set; } = new ToggleNode(true);
+
+	// Radar lines only to Divine / Exalted currency chests
+	public ToggleNode RadarOnlyHighValue { get; set; } = new ToggleNode(false);
 
 	// Minimap: radar lines from player to chest entities
 	public ToggleNode MinimapRadarLines { get; set; } = new ToggleNode(true);
